@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compte Rendu TP4 - Timers & PWM (Systèmes Embarqués)</title>
+    <style>
+        /* ================= VARIABLES & THEME ================= */
+        :root {
+            --pixel-blue: #8AB4F8;
+            --pixel-dark-blue: #1A73E8;
+            --pixel-violet: #A142F4;
+            --pixel-dark-violet: #6A1B9A;
+            --bg-deep-space: #0B0B1A;
+            --glass-bg: rgba(25, 25, 45, 0.6);
+            --glass-border: rgba(138, 180, 248, 0.2);
+            --text-main: #E8EAED;
+            --text-muted: #9AA0A6;
+            --glow-shadow: 0 0 20px rgba(161, 66, 244, 0.4);
+            --pwm-color: #00e5ff;
+            --pwm-glow: rgba(0, 229, 255, 0.4);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: var(--bg-deep-space); color: var(--text-main); overflow-x: hidden; line-height: 1.6; }
+
+        /* ================= ASTRONOMIC BACKGROUND ================= */
+        .stars {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
+            background: 
+                radial-gradient(circle at 15% 50%, rgba(106, 27, 154, 0.15), transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(26, 115, 232, 0.15), transparent 50%);
+        }
+        .star { position: absolute; background-color: white; border-radius: 50%; animation: twinkle infinite alternate; }
+        @keyframes twinkle { 0% { opacity: 0.1; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); box-shadow: 0 0 8px white; } }
+
+        /* ================= PAGE DE GARDE ================= */
+        .cover-page {
+            min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; position: relative; padding: 2rem;
+        }
+        .cover-header { text-transform: uppercase; letter-spacing: 3px; color: var(--text-muted); margin-bottom: 2rem; font-size: 1.1rem; }
+        .cover-title { font-size: 4rem; font-weight: 800; background: linear-gradient(135deg, var(--pixel-blue), var(--pwm-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1rem; text-shadow: 0 0 40px var(--pwm-glow); line-height: 1.2; }
+        .cover-subtitle { font-size: 1.8rem; color: var(--text-main); margin-bottom: 4rem; font-weight: 300; }
+        .cover-details { background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); padding: 2.5rem 4rem; border-radius: 20px; box-shadow: var(--glow-shadow); }
+        .cover-details h3 { color: var(--pixel-blue); font-size: 1.4rem; margin-bottom: 0.5rem; }
+        .cover-details p { font-size: 1.2rem; margin-bottom: 1.5rem; }
+        .cover-details .binomial { font-weight: bold; font-size: 1.3rem; color: var(--text-main); }
+        .scroll-indicator { position: absolute; bottom: 40px; animation: bounce 2s infinite; color: var(--pixel-blue); font-size: 2rem; }
+        @keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-20px); } 60% { transform: translateY(-10px); } }
+
+        /* ================= LAYOUT ================= */
+        .container { max-width: 1200px; margin: 0 auto; padding: 4rem 2rem; }
+        .section-title { font-size: 2.5rem; color: var(--pixel-blue); margin-bottom: 2rem; border-bottom: 2px solid var(--pwm-color); padding-bottom: 0.5rem; display: inline-block; }
+        .glass-panel { background: var(--glass-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid var(--glass-border); border-radius: 16px; padding: 2.5rem; margin-bottom: 3rem; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); }
+
+        /* ================= TABS ================= */
+        .tabs { display: flex; gap: 1rem; margin-bottom: 2rem; justify-content: center; flex-wrap: wrap; }
+        .tab-btn { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--pixel-blue); color: var(--pixel-blue); padding: 1rem 2rem; border-radius: 30px; cursor: pointer; font-weight: bold; font-size: 1.1rem; transition: all 0.3s ease; }
+        .tab-btn:hover, .tab-btn.active { background: linear-gradient(90deg, var(--pixel-dark-blue), var(--pwm-color)); color: #fff; border-color: transparent; box-shadow: 0 0 20px var(--pwm-color); }
+        .tab-content { display: none; animation: fadeIn 0.5s ease; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ================= CODE BLOCKS ================= */
+        pre { background: #0d0d1a; border-left: 4px solid var(--pwm-color); padding: 1.5rem; border-radius: 8px; overflow-x: auto; font-family: 'Courier New', Courier, monospace; font-size: 0.95rem; color: #a6accd; margin-top: 1.5rem; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+        code .keyword { color: #89ddff; } code .function { color: #82aaff; } code .comment { color: #546e7a; font-style: italic; } code .number { color: #f78c6c; }
+
+        /* ================= HARDWARE VISUALIZATION ================= */
+        .hardware-container { display: flex; align-items: center; justify-content: center; gap: 2.5rem; margin: 1rem 0 2rem 0; padding: 3rem; background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%); border-radius: 16px; position: relative; flex-wrap: wrap;}
+        .board { width: 140px; height: 200px; background: #e0e0e0; border-radius: 12px; position: relative; box-shadow: 0 0 25px rgba(255,255,255,0.15); display: flex; flex-direction: column; align-items: center; }
+        .board::before { content: "NUCLEO C031"; color: #333; font-weight: bold; font-size: 0.85rem; margin-top: 15px; }
+        .chip { width: 45px; height: 45px; background: #222; margin-top: 25px; border-radius: 4px; }
+        .pin { width: 12px; height: 12px; background: #333; border-radius: 50%; position: absolute; }
+        .pin.pa5 { right: 10px; top: 60px; background: var(--pwm-color); box-shadow: 0 0 10px var(--pwm-color); }
+        .pin.pa0 { left: 10px; top: 80px; background: #ff9800; box-shadow: 0 0 10px #ff9800; }
+        
+        .component { text-align: center; display: flex; flex-direction: column; align-items: center;}
+        
+        /* LED Styling */
+        .led-viz { width: 40px; height: 40px; background: #111; border-radius: 50%; margin: 0 auto 10px; border: 2px solid #333; transition: box-shadow 0.1s ease; }
+        
+        /* Oscope Styling */
+        .oscope-container { background: #001100; border: 3px solid #333; border-radius: 10px; padding: 10px; box-shadow: inset 0 0 20px #000; position: relative; width: 300px; height: 150px; }
+        .oscope-grid { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-image: linear-gradient(rgba(0, 255, 0, 0.2) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 0, 0.2) 1px, transparent 1px); background-size: 20px 20px; z-index: 1; pointer-events: none; }
+        canvas { position: relative; z-index: 2; width: 100%; height: 100%; }
+
+        /* Sliders */
+        .slider-box { background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid var(--pwm-color); margin-bottom: 20px; text-align: center; }
+        .slider { -webkit-appearance: none; width: 200px; height: 8px; border-radius: 5px; background: #333; outline: none; margin: 15px 0; }
+        .slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: var(--pwm-color); cursor: pointer; box-shadow: 0 0 10px var(--pwm-color); }
+        .data-display { font-family: monospace; font-size: 1.2rem; color: #fff; background: #111; padding: 10px; border-radius: 5px; margin-top: 10px;}
+        .highlight { color: var(--pwm-color); font-weight: bold; }
+
+        /* ================= POST-LAB ================= */
+        .qa-grid { display: flex; flex-direction: column; gap: 2rem; }
+        .qa-card { background: rgba(0, 0, 0, 0.3); border-left: 4px solid var(--pwm-color); padding: 2rem; border-radius: 8px; transition: all 0.3s ease; }
+        .qa-card:hover { background: rgba(0, 229, 255, 0.1); transform: translateX(10px); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .qa-question { font-size: 1.3rem; font-weight: bold; color: var(--pixel-blue); margin-bottom: 1.5rem; display: flex; align-items: flex-start; gap: 10px; border-bottom: 1px solid rgba(138, 180, 248, 0.2); padding-bottom: 10px;}
+        .qa-question::before { content: "Q:"; color: var(--pwm-color); font-size: 1.5rem; }
+        .qa-answer { color: var(--text-main); line-height: 1.8; font-size: 1.05rem; }
+        .qa-answer strong { color: #fff; }
+        .formula-box { background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; font-family: 'Courier New', Courier, monospace; color: var(--pwm-color); margin: 15px 0; border: 1px solid #333; }
+    </style>
+</head>
+<body>
+
+    <div class="stars" id="stars"></div>
+
+    <section class="cover-page">
+        <div class="cover-header">Université / Département d'Électronique</div>
+        <h1 class="cover-title">Timers & Signaux PWM</h1>
+        <h2 class="cover-subtitle">Travaux Pratiques N°4 - Systèmes Embarqués</h2>
+        
+        <div class="cover-details">
+            <h3>Binôme Réalisateur</h3>
+            <p class="binomial">Dahane Ahmed Lamine<br>& Tabbi Meriem</p>
+            <h3>Enseignante Responsable</h3>
+            <p>Mme. Afaf Saoud</p>
+            <h3 style="margin-top: 1rem; font-size: 1rem; color: var(--text-muted);">Année Universitaire 2025/2026</h3>
+        </div>
+        
+        <div class="scroll-indicator">↓</div>
+    </section>
+
+    <div class="container">
+        
+        <h2 class="section-title">1. Jumeaux Numériques & Codes Sources</h2>
+        <section class="glass-panel">
+            
+            <div class="tabs">
+                <button class="tab-btn active" onclick="openTab(event, 'part1', 1)">Manip 1 : Respiration Auto</button>
+                <button class="tab-btn" onclick="openTab(event, 'part2', 2)">Manip 2 : ADC & PWM</button>
+            </div>
+
+            <div id="part1" class="tab-content active">
+                <p style="color: var(--text-muted); text-align: center; margin-bottom: 20px;">
+                    <strong>Boucle logicielle :</strong> Le microcontrôleur incrémente et décrémente automatiquement le registre CCR pour créer un effet de respiration (Fading). L'oscilloscope virtuel s'ajuste tout seul.
+                </p>
+
+                <div class="hardware-container">
+                    <div class="board">
+                        <div class="chip"></div>
+                        <div class="pin pa5" title="PA5 (TIM3_CH2)"></div>
+                    </div>
+                    
+                    <div style="height: 4px; width: 40px; background: var(--pwm-color);"></div>
+                    
+                    <div class="component">
+                        <div class="led-viz" id="sim-led-1"></div>
+                        <p style="font-weight: bold;">LED Dimmable</p>
+                    </div>
+
+                    <div style="height: 4px; width: 40px; background: #555;"></div>
+
+                    <div class="component">
+                        <div class="oscope-container">
+                            <div class="oscope-grid"></div>
+                            <canvas id="oscope-canvas-1" width="280" height="130"></canvas>
+                        </div>
+                        <p style="font-weight: bold; margin-top: 10px;">Oscilloscope CH1</p>
+                    </div>
+                </div>
+
+                <pre><code><span class="keyword">uint16_t</span> pwm_val = <span class="number">0</span>;
+<span class="keyword">int8_t</span> step = <span class="number">5</span>;
+
+<span class="function">HAL_TIM_PWM_Start</span>(&htim3, TIM_CHANNEL_2);
+
+<span class="keyword">while</span> (1) 
+{ 
+    <span class="comment">// Mise à jour du registre de comparaison</span>
+    <span class="function">__HAL_TIM_SET_COMPARE</span>(&htim3, TIM_CHANNEL_2, pwm_val);
+    
+    pwm_val += step;
+    
+    <span class="comment">// Inversion de direction aux limites (ARR = 499)</span>
+    <span class="keyword">if</span>(pwm_val >= <span class="number">500</span> || pwm_val <= <span class="number">0</span>) {
+        step = -step;
+    }
+    
+    <span class="function">HAL_Delay</span>(<span class="number">10</span>); <span class="comment">// Vitesse de la respiration visuelle</span>
+}</code></pre>
+            </div>
+
+            <div id="part2" class="tab-content">
+                <p style="color: var(--text-muted); text-align: center; margin-bottom: 20px;">
+                    <strong>Contrôle Manuel :</strong> Le potentiomètre (ADC) contrôle directement le registre CCR. La LED et l'oscilloscope obéissent à vos commandes.
+                </p>
+
+                <div class="slider-box" style="border-color: #ff9800;">
+                    <label style="font-size: 1.2rem; font-weight: bold; color: #ff9800;">Potentiomètre Virtuel (ADC PA0)</label><br>
+                    <input type="range" min="0" max="4095" value="2048" class="slider" id="adc-slider" style="background: #555;">
+                    <div class="data-display">
+                        Lecture ADC : <span id="adc-val" style="color: #ff9800;">2048</span> | Rapport PWM : <span id="duty-val" class="highlight">50%</span>
+                    </div>
+                </div>
+
+                <div class="hardware-container">
+                    <div class="wire" style="background: #ff9800; width: 30px;"></div>
+                    
+                    <div class="board">
+                        <div class="chip"></div>
+                        <div class="pin pa0" title="PA0 (ADC In)"></div>
+                        <div class="pin pa5" title="PA5 (PWM Out)"></div>
+                    </div>
+                    
+                    <div style="height: 4px; width: 30px; background: var(--pwm-color);"></div>
+                    
+                    <div class="component">
+                        <div class="led-viz" id="sim-led-2"></div>
+                        <p style="font-weight: bold;">LED Dimmable</p>
+                    </div>
+
+                    <div style="height: 4px; width: 30px; background: #555;"></div>
+
+                    <div class="component">
+                        <div class="oscope-container">
+                            <div class="oscope-grid"></div>
+                            <canvas id="oscope-canvas-2" width="280" height="130"></canvas>
+                        </div>
+                        <p style="font-weight: bold; margin-top: 10px;">Oscilloscope CH1</p>
+                    </div>
+                </div>
+
+                <pre><code><span class="function">HAL_TIM_PWM_Start</span>(&htim3, TIM_CHANNEL_2);
+
+<span class="keyword">while</span> (1) 
+{ 
+    <span class="comment">// 1. Lecture de l'ADC (0 à 4095)</span>
+    <span class="function">HAL_ADC_Start</span>(&hadc1);
+    <span class="function">HAL_ADC_PollForConversion</span>(&hadc1, <span class="number">10</span>);
+    <span class="keyword">uint32_t</span> adc_val = <span class="function">HAL_ADC_GetValue</span>(&hadc1);
+    <span class="function">HAL_ADC_Stop</span>(&hadc1);
+    
+    <span class="comment">// 2. Mise à l'échelle (Mapping 4095 -> 500 pour correspondre à l'ARR)</span>
+    <span class="keyword">uint32_t</span> pwm_val = (adc_val * <span class="number">500</span>) / <span class="number">4095</span>;
+
+    <span class="comment">// 3. Application au Timer</span>
+    <span class="function">__HAL_TIM_SET_COMPARE</span>(&htim3, TIM_CHANNEL_2, pwm_val);
+    
+    <span class="function">HAL_Delay</span>(<span class="number">50</span>);
+}</code></pre>
+            </div>
+
+        </section>
+
+        <h2 class="section-title">2. Post-Lab : Analyse Technique</h2>
+        <section class="qa-grid">
+            
+            <div class="qa-card">
+                <div class="qa-question">1. Nous avons modifié TIM3->CCR1 pour faire varier l'intensité. Si vous fixez cette valeur à 500 (alors que votre ARR est à 499), quel sera l'état de la LED ? Pourquoi ?</div>
+                <div class="qa-answer">
+                    <p>La LED sera <strong>allumée en permanence</strong> à 100% de sa luminosité maximale (le signal restera bloqué à l'état HAUT de 3.3V de manière continue).</p>
+                    <p><strong>Pourquoi ?</strong> Le registre matériel du Timer compte de 0 jusqu'à la valeur de l'ARR (soit de 0 à 499), puis il retombe à 0. L'impulsion est censée basculer à l'état BAS uniquement lorsque le compteur atteint la valeur du CCR. Puisque le CCR est configuré à 500, le compteur n'atteindra <strong>jamais</strong> cette valeur avant de se réinitialiser. La condition de basculement n'étant jamais remplie, le signal PWM ne s'éteint jamais.</p>
+                </div>
+            </div>
+
+            <div class="qa-card">
+                <div class="qa-question">2. Avec un ARR de 499, quelle est la plus petite variation de luminosité (en pourcentage) que l'on peut obtenir ?</div>
+                <div class="qa-answer">
+                    <p>La résolution de notre signal PWM est définie par le nombre total de pas (étapes) possibles sur une période de compteur. Ce nombre correspond à (ARR + 1).</p>
+                    <p>Pour un ARR de 499, nous avons 499 + 1 = <strong>500 pas possibles</strong> (de 0 à 499 inclus).</p>
+                    <p>La plus petite variation de luminosité correspond à un saut d'un seul pas (modifier le CCR de 1). En pourcentage, le calcul est :</p>
+                    <div class="formula-box">Plus petite variation = (1 / 500) &times; 100 = 0.2%</div>
+                </div>
+            </div>
+
+            <div class="qa-card">
+                <div class="qa-question">3. Votre Prescaler est réglé sur 69. Si on le passait à 699, comment la fréquence du signal serait-elle modifiée ? Est-ce que l'œil humain verrait une différence ?</div>
+                <div class="qa-answer">
+                    <p>La formule de la fréquence du Timer est : F_PWM = F_CPU / ((PSC + 1) &times; (ARR + 1)).<br>
+                    Le facteur diviseur de notre Prescaler passe de (69 + 1 = 70) à (699 + 1 = 700). Le diviseur est donc <strong>multiplié par 10</strong>, ce qui signifie que <strong>la fréquence du signal sera divisée par 10</strong>.</p>
+                    <p><strong>Conséquence pour l'œil humain :</strong> Si le STM32 tourne à 48 MHz, la fréquence initiale (PSC=69) était d'environ 1371 Hz (totalement invisible). La nouvelle fréquence (PSC=699) sera de <strong>137 Hz</strong>. Bien que 137 Hz soit techniquement supérieur au seuil critique de fusion du scintillement (environ 50-60 Hz), l'œil humain peut percevoir un phénomène désagréable appelé <em>effet stroboscopique</em> (des images saccadées ou un léger tremblement) si l'on bouge rapidement les yeux ou si l'on secoue la carte contenant la LED.</p>
+                </div>
+            </div>
+
+            <div class="qa-card">
+                <div class="qa-question">4. Pourquoi utilise-t-on le PWM pour faire varier la luminosité plutôt que de simplement mettre un potentiomètre (résistance variable) en série avec la LED ?</div>
+                <div class="qa-answer">
+                    <p>C'est une question de <strong>rendement énergétique et de dissipation thermique</strong>.</p>
+                    <p>Si l'on utilise une résistance variable en série, la tension superflue est dissipée sous forme de chaleur pure par effet Joule (P = R &times; I<sup>2</sup>). Cela gaspille énormément d'énergie de la batterie et nécessite des potentiomètres capables de supporter de fortes puissances (risque de brûlure pour de gros éclairages ou moteurs).</p>
+                    <p>La PWM fonctionne en mode commutation (Tout ou Rien). Le transistor de sortie est soit totalement "ouvert" (aucun courant = pas de consommation), soit totalement "fermé" (résistance nulle = pas de perte de tension). Il n'y a donc <strong>pratiquement aucune perte thermique</strong>, offrant une efficacité énergétique proche de 100%.</p>
+                </div>
+            </div>
+
+            <div class="qa-card">
+                <div class="qa-question">5. À partir de quelle fréquence minimale le clignotement de la LED devient-il invisible pour l'œil humain, laissant place à une sensation de luminosité constante ?</div>
+                <div class="qa-answer">
+                    <p>Ce phénomène s'explique par la <strong>persistance rétinienne</strong> (et le traitement neuronal du cerveau), défini scientifiquement par le "seuil critique de fusion du scintillement" (Flicker Fusion Threshold).</p>
+                    <p>Pour la majorité des êtres humains, le clignotement d'une source lumineuse devient complètement imperceptible entre <strong>50 et 60 Hz</strong>. C'est d'ailleurs pour cette raison que le réseau électrique domestique, ainsi que les téléviseurs classiques, ont historiquement adopté des taux de rafraîchissement de 50 Hz (Europe) ou 60 Hz (USA).</p>
+                </div>
+            </div>
+
+            <div class="qa-card">
+                <div class="qa-question">6. Dans ce TP, nous avons utilisé HAL_Delay(). Si nous devions gérer en même temps un bouton d'urgence très réactif, pourquoi l'utilisation de HAL_Delay() poserait-elle problème ?</div>
+                <div class="qa-answer">
+                    <p>La fonction <code>HAL_Delay()</code> est une fonction dite <strong>bloquante</strong> (implémentée via une boucle d'attente active ou <em>busy-wait</em> liée au SysTick).</p>
+                    <p>Pendant que le délai s'écoule (par exemple <code>HAL_Delay(500)</code>), le processeur reste figé dans cette ligne de code à compter les millisecondes et est incapable d'exécuter la moindre instruction supplémentaire (comme lire l'état d'un GPIO). Si un opérateur appuie sur le bouton d'urgence et le relâche pendant ces 500 millisecondes, <strong>l'événement critique sera complètement ignoré</strong> par le système.</p>
+                    <p>Dans un système industriel temps réel sécurisé, on n'utilise jamais de délais bloquants. Il faut utiliser des <strong>Interruptions Matérielles Externes (EXTI)</strong> ou l'approche des machines à états gérées par des compteurs asynchrones (comme <code>HAL_GetTick()</code> ou les interruptions de Timers).</p>
+                </div>
+            </div>
+
+        </section>
+    </div>
+
+    <script>
+        // 1. Generation des étoiles
+        const starContainer = document.getElementById('stars');
+        for (let i = 0; i < 200; i++) {
+            let star = document.createElement('div');
+            star.className = 'star';
+            star.style.width = Math.random() * 3 + 'px';
+            star.style.height = star.style.width;
+            star.style.left = Math.random() * 100 + 'vw';
+            star.style.top = Math.random() * 100 + 'vh';
+            star.style.animationDuration = (Math.random() * 3 + 2) + 's';
+            star.style.animationDelay = Math.random() * 5 + 's';
+            starContainer.appendChild(star);
+        }
+
+        // ================= LOGIQUE DU JUMEAU NUMERIQUE (PWM) =================
+        let currentManip = 1;
+
+        // MANIP 1 : Fading Automatique
+        const canvas1 = document.getElementById('oscope-canvas-1');
+        const ctx1 = canvas1.getContext('2d');
+        const led1 = document.getElementById('sim-led-1');
+        let autoDuty = 0;
+        let autoStep = 2; // Vitesse de respiration
+        let autoInterval = null;
+
+        // MANIP 2 : ADC + PWM
+        const canvas2 = document.getElementById('oscope-canvas-2');
+        const ctx2 = canvas2.getContext('2d');
+        const led2 = document.getElementById('sim-led-2');
+        const adcSlider = document.getElementById('adc-slider');
+        const adcText = document.getElementById('adc-val');
+        const dutyText = document.getElementById('duty-val');
+
+        // Fonction générique pour dessiner l'oscilloscope
+        function drawOscilloscope(ctx, canvasObj, dutyCyclePercentage) {
+            const width = canvasObj.width;
+            const height = canvasObj.height;
+            ctx.clearRect(0, 0, width, height);
+            
+            ctx.beginPath();
+            ctx.strokeStyle = '#00e5ff'; // Cyan
+            ctx.lineWidth = 3;
+            ctx.lineJoin = 'round';
+
+            const periods = 3; 
+            const periodWidth = width / periods;
+            const highTime = periodWidth * (dutyCyclePercentage / 100);
+            
+            const yHigh = 20; 
+            const yLow = height - 20;
+
+            let x = 0;
+            ctx.moveTo(x, dutyCyclePercentage === 0 ? yLow : yHigh);
+
+            for (let i = 0; i < periods; i++) {
+                const startX = i * periodWidth;
+                if (dutyCyclePercentage === 0) {
+                    ctx.lineTo(startX + periodWidth, yLow);
+                } else if (dutyCyclePercentage === 100) {
+                    ctx.lineTo(startX + periodWidth, yHigh);
+                } else {
+                    ctx.lineTo(startX + highTime, yHigh);
+                    ctx.lineTo(startX + highTime, yLow);
+                    ctx.lineTo(startX + periodWidth, yLow);
+                    if (i < periods - 1) {
+                        ctx.lineTo(startX + periodWidth, yHigh);
+                    }
+                }
+            }
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = '#00e5ff';
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+
+        // Fonction générique pour mettre à jour la LED
+        function updateLed(ledObj, dutyCyclePercentage) {
+            let opacity = dutyCyclePercentage / 100;
+            if (opacity > 0) {
+                ledObj.style.backgroundColor = `rgba(0, 229, 255, ${opacity + 0.2})`;
+                ledObj.style.boxShadow = `0 0 ${dutyCyclePercentage/2}px #00e5ff, inset 0 0 ${dutyCyclePercentage/4}px white`;
+            } else {
+                ledObj.style.backgroundColor = '#111';
+                ledObj.style.boxShadow = 'none';
+            }
+        }
+
+        // Boucle d'animation pour Manip 1
+        function startAutoFade() {
+            clearInterval(autoInterval);
+            autoInterval = setInterval(() => {
+                autoDuty += autoStep;
+                if(autoDuty >= 100 || autoDuty <= 0) autoStep = -autoStep;
+                drawOscilloscope(ctx1, canvas1, autoDuty);
+                updateLed(led1, autoDuty);
+            }, 30);
+        }
+
+        // Mise à jour manuelle pour Manip 2
+        function updateManualPWM() {
+            const adcVal = parseInt(adcSlider.value); // 0 - 4095
+            const duty = Math.round((adcVal / 4095) * 100);
+            
+            adcText.innerText = adcVal;
+            dutyText.innerText = duty + '%';
+            
+            drawOscilloscope(ctx2, canvas2, duty);
+            updateLed(led2, duty);
+        }
+
+        adcSlider.addEventListener('input', updateManualPWM);
+
+        // ================= GESTION DES ONGLETS =================
+        function openTab(evt, tabName, manipNum) {
+            currentManip = manipNum;
+
+            if(currentManip === 1) {
+                startAutoFade();
+            } else {
+                clearInterval(autoInterval);
+                updateManualPWM();
+            }
+
+            let i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+                tabcontent[i].classList.remove("active");
+            }
+            tablinks = document.getElementsByClassName("tab-btn");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            setTimeout(() => document.getElementById(tabName).classList.add("active"), 10);
+            evt.currentTarget.className += " active";
+        }
+
+        // Démarrage
+        startAutoFade();
+    </script>
+</body>
+</html>
